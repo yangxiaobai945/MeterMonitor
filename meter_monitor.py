@@ -73,53 +73,62 @@ class ModbusRTUClient:
         self.ser.write(request_frame)
         self.ser.flush()
 
-        # 4. 先读地址和功能码，区分正常响应与异常响应
-        head2 = self.ser.read(2)
-        if len(head2) < 2:
-            return b""  # 超时未响应
+        # 4. 在超时窗口内循环同步帧头，避免噪声/回显导致一次误判就失败
+        timeout_s = self.ser.timeout if self.ser.timeout is not None else 0.5
+        deadline = time.monotonic() + timeout_s
 
-        resp_slave, resp_fc = head2[0], head2[1]
-        if resp_slave != self.slave_id:
-            return b""  # 非本机地址的帧
+        while time.monotonic() < deadline:
+            b0 = self.ser.read(1)
+            if len(b0) < 1:
+                continue
 
-        # 异常响应: 功能码最高位为 1，帧格式为 addr + (fc|0x80) + ex_code + crc
-        if resp_fc == (function_code | 0x80):
-            tail = self.ser.read(3)
-            if len(tail) < 3:
-                return b""
-            full_response = head2 + tail
+            # 只接受目标从站地址，其他字节视为噪声并继续同步
+            if b0[0] != self.slave_id:
+                continue
+
+            b1 = self.ser.read(1)
+            if len(b1) < 1:
+                continue
+
+            resp_fc = b1[0]
+            head2 = b0 + b1
+
+            # 异常响应: addr + (fc|0x80) + ex_code + crc(2)
+            if resp_fc == (function_code | 0x80):
+                tail = self.ser.read(3)
+                if len(tail) < 3:
+                    continue
+                full_response = head2 + tail
+                payload, received_crc = full_response[:-2], full_response[-2:]
+                if self.crc16(payload) == received_crc:
+                    return full_response
+                continue
+
+            # 非目标功能码，继续寻找下一帧
+            if resp_fc != function_code:
+                continue
+
+            # 正常响应: addr + fc + byte_count + data + crc
+            len_byte = self.ser.read(1)
+            if len(len_byte) < 1:
+                continue
+            data_len = len_byte[0]
+
+            expected_len = reg_count * 2
+            if data_len != expected_len:
+                # 长度不符，可能是串口噪声/错帧，继续同步
+                continue
+
+            remaining_bytes = self.ser.read(data_len + 2)
+            if len(remaining_bytes) < (data_len + 2):
+                continue
+
+            full_response = head2 + len_byte + remaining_bytes
             payload, received_crc = full_response[:-2], full_response[-2:]
-            if self.crc16(payload) != received_crc:
-                return b""
-            return full_response
+            if self.crc16(payload) == received_crc:
+                return full_response
 
-        # 正常响应功能码必须与请求一致
-        if resp_fc != function_code:
-            return b""
-
-        # 5. 正常响应第三字节为数据字节数
-        len_byte = self.ser.read(1)
-        if len(len_byte) < 1:
-            return b""
-        data_len = len_byte[0]
-
-        # 对 04 读寄存器，数据长度应为寄存器数 * 2 字节
-        expected_len = reg_count * 2
-        if data_len != expected_len:
-            return b""
-
-        remaining_bytes = self.ser.read(data_len + 2)
-        if len(remaining_bytes) < (data_len + 2):
-            return b""  # 数据不完整
-
-        full_response = head2 + len_byte + remaining_bytes
-
-        # 6. CRC 验证
-        payload, received_crc = full_response[:-2], full_response[-2:]
-        if self.crc16(payload) != received_crc:
-            return b""  # 校验错误
-
-        return full_response
+        return b""  # 在超时窗口内未找到合法响应帧
 
     def read_registers(self, start_reg: int, reg_count: int, reg_types: list) -> dict:
         """
