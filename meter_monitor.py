@@ -28,18 +28,35 @@ class ModbusRTUClient:
         根据文档 6.1：默认波特率 9600，数据位 8，停止位 1，偶校验 (EVEN)
         """
         self.slave_id = slave_id
+        self.port = port
+        self.baudrate = baudrate
+        self.last_io_error = ""
         try:
-            self.ser = serial.Serial(
-                port=port,
-                baudrate=baudrate,       # [cite: 25]
+            self.ser = self._open_serial()
+        except Exception as e:
+            print(f"❌ 无法打开串口 {port}: {e}")
+            sys.exit(1)
+
+    def _open_serial(self):
+        return serial.Serial(
+                port=self.port,
+                baudrate=self.baudrate,       # [cite: 25]
                 bytesize=serial.EIGHTBITS, # [cite: 25]
                 parity=serial.PARITY_EVEN, # [cite: 25]
                 stopbits=serial.STOPBITS_ONE, # [cite: 25]
                 timeout=0.5              # 串口读取超时时间 (秒)
             )
+
+    def reconnect(self):
+        """运行期串口异常后的重连入口。"""
+        try:
+            if hasattr(self, "ser") and self.ser and self.ser.is_open:
+                self.ser.close()
+            self.ser = self._open_serial()
+            self.last_io_error = ""
+            return True, ""
         except Exception as e:
-            print(f"❌ 无法打开串口 {port}: {e}")
-            sys.exit(1)
+            return False, str(e)
 
     @staticmethod
     def crc16(data: bytes) -> bytes:
@@ -59,85 +76,97 @@ class ModbusRTUClient:
         """
         【新增核心逻辑】核心方法：组装报文 -> 发送请求 -> 等待并读取响应 -> 验证
         """
-        # 1. 组装请求报文: 地址(1B) + 功能码(1B) + 寄存器起始地址(2B) + 寄存器数量(2B)
-        request_payload = struct.pack(">BBHH", self.slave_id, function_code, start_reg, reg_count)
-        # ">BBHH" 代表大端字节序：1字节地址 + 1字节功能码 + 2字节起始地址 + 2字节寄存器数量
-        # > 代表大端字节序，B 代表无符号 char (1字节)，H 代表无符号 short (2字节) [cite: 29]
-        request_frame = request_payload + self.crc16(request_payload) # 
+        self.last_io_error = ""
+        try:
+            # 1. 组装请求报文: 地址(1B) + 功能码(1B) + 寄存器起始地址(2B) + 寄存器数量(2B)
+            request_payload = struct.pack(">BBHH", self.slave_id, function_code, start_reg, reg_count)
+            # ">BBHH" 代表大端字节序：1字节地址 + 1字节功能码 + 2字节起始地址 + 2字节寄存器数量
+            # > 代表大端字节序，B 代表无符号 char (1字节)，H 代表无符号 short (2字节) [cite: 29]
+            request_frame = request_payload + self.crc16(request_payload) # 
 
-        # 2. 清空串口缓存，防止残留数据干扰
-        self.ser.reset_input_buffer()
-        self.ser.reset_output_buffer()
+            # 2. 清空串口缓存，防止残留数据干扰
+            self.ser.reset_input_buffer()
+            self.ser.reset_output_buffer()
 
-        # 3. 发送物理报文
-        self.ser.write(request_frame)
-        self.ser.flush()
+            # 3. 发送物理报文
+            self.ser.write(request_frame)
+            self.ser.flush()
 
-        # 4. 在超时窗口内循环同步帧头，避免噪声/回显导致一次误判就失败
-        timeout_s = self.ser.timeout if self.ser.timeout is not None else 0.5
-        deadline = time.monotonic() + timeout_s
+            # 4. 在超时窗口内循环同步帧头，避免噪声/回显导致一次误判就失败
+            timeout_s = self.ser.timeout if self.ser.timeout is not None else 0.5
+            deadline = time.monotonic() + timeout_s
 
-        while time.monotonic() < deadline:
-            b0 = self.ser.read(1)
-            if len(b0) < 1:
-                continue
-
-            # 只接受目标从站地址，其他字节视为噪声并继续同步
-            if b0[0] != self.slave_id:
-                continue
-
-            b1 = self.ser.read(1)
-            if len(b1) < 1:
-                continue
-
-            resp_fc = b1[0]
-            head2 = b0 + b1
-
-            # 异常响应: addr + (fc|0x80) + ex_code + crc(2)
-            if resp_fc == (function_code | 0x80):
-                tail = self.ser.read(3)
-                if len(tail) < 3:
+            while time.monotonic() < deadline:
+                b0 = self.ser.read(1)
+                if len(b0) < 1:
                     continue
-                full_response = head2 + tail
+
+                # 只接受目标从站地址，其他字节视为噪声并继续同步
+                if b0[0] != self.slave_id:
+                    continue
+
+                b1 = self.ser.read(1)
+                if len(b1) < 1:
+                    continue
+
+                resp_fc = b1[0]
+                head2 = b0 + b1
+
+                # 异常响应: addr + (fc|0x80) + ex_code + crc(2)
+                if resp_fc == (function_code | 0x80):
+                    tail = self.ser.read(3)
+                    if len(tail) < 3:
+                        continue
+                    full_response = head2 + tail
+                    payload, received_crc = full_response[:-2], full_response[-2:]
+                    if self.crc16(payload) == received_crc:
+                        return full_response
+                    continue
+
+                # 非目标功能码，继续寻找下一帧
+                if resp_fc != function_code:
+                    continue
+
+                # 正常响应: addr + fc + byte_count + data + crc
+                len_byte = self.ser.read(1)
+                if len(len_byte) < 1:
+                    continue
+                data_len = len_byte[0]
+
+                expected_len = reg_count * 2
+                if data_len != expected_len:
+                    # 长度不符，可能是串口噪声/错帧，继续同步
+                    continue
+
+                remaining_bytes = self.ser.read(data_len + 2)
+                if len(remaining_bytes) < (data_len + 2):
+                    continue
+
+                full_response = head2 + len_byte + remaining_bytes
                 payload, received_crc = full_response[:-2], full_response[-2:]
                 if self.crc16(payload) == received_crc:
                     return full_response
-                continue
-
-            # 非目标功能码，继续寻找下一帧
-            if resp_fc != function_code:
-                continue
-
-            # 正常响应: addr + fc + byte_count + data + crc
-            len_byte = self.ser.read(1)
-            if len(len_byte) < 1:
-                continue
-            data_len = len_byte[0]
-
-            expected_len = reg_count * 2
-            if data_len != expected_len:
-                # 长度不符，可能是串口噪声/错帧，继续同步
-                continue
-
-            remaining_bytes = self.ser.read(data_len + 2)
-            if len(remaining_bytes) < (data_len + 2):
-                continue
-
-            full_response = head2 + len_byte + remaining_bytes
-            payload, received_crc = full_response[:-2], full_response[-2:]
-            if self.crc16(payload) == received_crc:
-                return full_response
+        except (serial.SerialException, OSError) as e:
+            self.last_io_error = f"串口I/O异常: {e}"
 
         return b""  # 在超时窗口内未找到合法响应帧
 
-    def read_registers(self, start_reg: int, reg_count: int, reg_types: list) -> dict:
+    def read_registers(self, start_reg: int, reg_count: int, reg_types: list, retries: int = 2, retry_delay: float = 0.05) -> dict:
         """
         封装高层读取逻辑：发送功能码 04 读寄存器并调用转换
         """
         # 功能码统一使用 04 (读输入寄存器)
-        response = self.send_and_receive(function_code=0x04, start_reg=start_reg, reg_count=reg_count) # [cite: 67]
+        response = b""
+        for attempt in range(retries + 1):
+            response = self.send_and_receive(function_code=0x04, start_reg=start_reg, reg_count=reg_count) # [cite: 67]
+            if response:
+                break
+            if self.last_io_error:
+                return {"error": self.last_io_error, "io_error": True}
+            if attempt < retries:
+                time.sleep(retry_delay)
         if not response:
-            return {"error": "通讯超时或校验失败"}
+            return {"error": f"通讯超时或校验失败(已重试{retries}次)"}
 
         # 处理 Modbus 异常帧: [addr][fc|0x80][ex_code][crc_lo][crc_hi]
         if len(response) == 5 and response[1] == 0x84:
@@ -253,6 +282,7 @@ def main():
     
     # 初始化真实 Modbus 客户端
     client = ModbusRTUClient(port=SERIAL_PORT, baudrate=9600, slave_id=1) # [cite: 25]
+    reconnect_backoff_s = 2.0
 
     # 初始化 TUI 屏幕
     sys.stdout.write("\033[2J\033[?25l")
@@ -273,8 +303,22 @@ def main():
             # 异常处理检查
             if "error" in res_b1:
                 merged_data["error"] = res_b1["error"]
+                if res_b1.get("io_error"):
+                    ok, err = client.reconnect()
+                    if ok:
+                        merged_data["error"] = "串口已重连，等待下一轮采集"
+                    else:
+                        merged_data["error"] = f"{merged_data['error']} | 重连失败: {err}"
+                        time.sleep(reconnect_backoff_s)
             elif "error" in res_b2:
                 merged_data["error"] = res_b2["error"]
+                if res_b2.get("io_error"):
+                    ok, err = client.reconnect()
+                    if ok:
+                        merged_data["error"] = "串口已重连，等待下一轮采集"
+                    else:
+                        merged_data["error"] = f"{merged_data['error']} | 重连失败: {err}"
+                        time.sleep(reconnect_backoff_s)
             else:
                 # 均读取成功后，合并原始整型数据并执行比例换算
                 for key, cfg in REG_CONFIG.items():
