@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable
 
-from pymodbus.client import ModbusSerialClient
+from pymodbus.client import ModbusSerialClient, ModbusTcpClient
 
 from .config import RuntimeConfig
 
@@ -14,7 +13,7 @@ class MeterModbusClient:
         self._packet_logger = packet_logger
         self._client = self._build_client()
 
-    def _build_client(self) -> ModbusSerialClient:
+    def _build_client(self) -> ModbusSerialClient | ModbusTcpClient:
         def trace_packet(*args: object) -> bytes:
             if len(args) != 2:
                 return b""
@@ -33,6 +32,17 @@ class MeterModbusClient:
             direction = "RX" if is_receive else "TX"
             self._packet_logger.info("%s %s", direction, packet.hex(" ").upper())
             return packet
+
+        if self._config.transport == "tcp":
+            return ModbusTcpClient(
+                host=self._config.host,
+                port=self._config.tcp_port,
+                timeout=self._config.timeout,
+                retries=self._config.retries,
+                reconnect_delay=self._config.reconnect_delay,
+                reconnect_delay_max=self._config.reconnect_delay_max,
+                trace_packet=trace_packet,
+            )
 
         return ModbusSerialClient(
             port=self._config.port,

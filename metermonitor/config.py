@@ -8,7 +8,10 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class RuntimeConfig:
+    transport: str
     port: str
+    host: str
+    tcp_port: int
     baudrate: int
     device_id: int
     timeout: float
@@ -24,8 +27,16 @@ def default_port() -> str:
 
 
 def parse_args() -> RuntimeConfig:
-    parser = argparse.ArgumentParser(description="Modbus RTU meter monitor")
+    parser = argparse.ArgumentParser(description="Modbus meter monitor")
+    parser.add_argument(
+        "--transport",
+        choices=("serial", "tcp"),
+        default="serial",
+        help="Transport type: serial (physical meter) or tcp (pymodbus simulator)",
+    )
     parser.add_argument("--port", default=default_port(), help="Serial port")
+    parser.add_argument("--host", default="127.0.0.1", help="TCP host for simulator mode")
+    parser.add_argument("--tcp-port", type=int, default=5020, help="TCP port for simulator mode")
     parser.add_argument("--baudrate", type=int, default=9600, help="Baudrate")
     parser.add_argument("--device-id", type=int, default=1, help="Modbus slave id")
     parser.add_argument("--timeout", type=float, default=0.5, help="Request timeout (s)")
@@ -37,7 +48,10 @@ def parse_args() -> RuntimeConfig:
     args = parser.parse_args()
 
     return RuntimeConfig(
+        transport=args.transport,
         port=args.port,
+        host=args.host,
+        tcp_port=args.tcp_port,
         baudrate=args.baudrate,
         device_id=args.device_id,
         timeout=args.timeout,
@@ -47,4 +61,3 @@ def parse_args() -> RuntimeConfig:
         poll_interval=args.poll_interval,
         log_dir=Path(args.log_dir),
     )
-

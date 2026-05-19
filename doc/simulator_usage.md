@@ -1,8 +1,8 @@
-# MeterMonitor Simulator 使用说明
+# MeterMonitor `pymodbus` Simulator 使用说明
 
 ## 目的
 
-`metermonitor/simulator.py` 提供了一个基于 `doc/电表协议.tsv` 的输入寄存器模拟器，用于在无物理串口环境（CI/GitHub Actions/Codespaces）中进行协议级验证与测试。
+`metermonitor/simulator.py` 基于 `pymodbus.simulator`（`SimData/SimDevice`）构造协议寄存器模型，配套 `metermonitor/simulator_main.py` 可直接启动 TCP Simulator，用于在无物理串口环境（CI/GitHub Actions/Codespaces）中调试 TUI。
 
 ## 覆盖范围
 
@@ -15,23 +15,34 @@
   - `0x0045` 当前正向总无功电能
   - `0x004F` 当前反向总无功电能
 
-## 基本用法
+## 启动 Simulator
+
+```bash
+cd /home/runner/work/MeterMonitor/MeterMonitor
+python -m metermonitor.simulator_main --host 127.0.0.1 --port 5020 --device-id 1
+```
+
+## 连接 TUI 到 Simulator
+
+```bash
+cd /home/runner/work/MeterMonitor/MeterMonitor
+python meter_monitor.py --transport tcp --host 127.0.0.1 --tcp-port 5020 --device-id 1
+```
+
+## Python 侧构建设备（高级用法）
 
 ```python
-from metermonitor.simulator import MeterProtocolSimulator
+from metermonitor.simulator import build_pymodbus_sim_device
 
-sim = MeterProtocolSimulator()
-registers = sim.snapshot_registers()
-window = sim.read_input_registers(start_address=0x00, count=29)
-sim.advance()  # 推进一个采样周期，模拟值波动和电能累计
+device = build_pymodbus_sim_device(device_id=1)
 ```
 
 ## 推荐验证命令
 
 ```bash
+cd /home/runner/work/MeterMonitor/MeterMonitor
 python -m py_compile meter_monitor.py metermonitor/*.py
 python -m pytest -q
 ```
 
-> 注意：在 CI/Codespaces 中不要运行 `meter_monitor.py`（该程序需要物理串口）。
-
+> 注意：CI/Codespaces 中不要用串口模式运行 `meter_monitor.py`；如需联调请使用 `--transport tcp` + `pymodbus simulator`。

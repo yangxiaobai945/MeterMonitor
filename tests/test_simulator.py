@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import pytest
+
 from metermonitor.parser import parse_registers
 from metermonitor.protocol import REGISTER_SPECS
-from metermonitor.simulator import MeterProtocolSimulator
+from metermonitor.simulator import (
+    SimulatorProfile,
+    build_input_register_words,
+    build_pymodbus_sim_device,
+)
 
 
-def test_simulator_covers_all_protocol_register_specs() -> None:
-    simulator = MeterProtocolSimulator()
-    raw_registers = simulator.snapshot_registers()
+def test_build_input_register_words_covers_protocol_specs() -> None:
+    raw_registers = build_input_register_words()
 
     for spec in REGISTER_SPECS:
         assert spec.address in raw_registers
@@ -15,9 +20,8 @@ def test_simulator_covers_all_protocol_register_specs() -> None:
             assert spec.address + 1 in raw_registers
 
 
-def test_simulator_registers_can_be_parsed_to_engineering_values() -> None:
-    simulator = MeterProtocolSimulator()
-    parsed = parse_registers(simulator.snapshot_registers())
+def test_build_input_register_words_can_be_parsed_to_engineering_values() -> None:
+    parsed = parse_registers(build_input_register_words())
 
     for spec in REGISTER_SPECS:
         assert spec.key in parsed.values
@@ -27,25 +31,19 @@ def test_simulator_registers_can_be_parsed_to_engineering_values() -> None:
     assert 0 <= parsed.values["PF_total"] <= 1.2
 
 
-def test_simulator_advance_increases_energy() -> None:
-    simulator = MeterProtocolSimulator()
-    before = parse_registers(simulator.snapshot_registers()).values
+def test_build_input_register_words_supports_custom_profile() -> None:
+    profile = SimulatorProfile(ua_raw=2215, ia_raw=180, e_total_raw=9999)
+    parsed = parse_registers(build_input_register_words(profile))
 
-    simulator.advance()
-    after = parse_registers(simulator.snapshot_registers()).values
-
-    assert after["E_total"] > before["E_total"]
-    assert after["E_import_total"] > before["E_import_total"]
-    assert after["EQ_total"] > before["EQ_total"]
+    assert parsed.values["Ua"] == 221.5
+    assert parsed.values["Ia"] == 1.8
+    assert parsed.values["E_total"] == pytest.approx(99.99)
 
 
-def test_simulator_read_input_registers_matches_snapshot_window() -> None:
-    simulator = MeterProtocolSimulator()
-    snapshot = simulator.snapshot_registers()
+def test_build_pymodbus_sim_device_populates_input_register_block() -> None:
+    device = build_pymodbus_sim_device(device_id=3)
+    registers = device.build_device()
 
-    start = 0x00
-    count = 29
-    expected = [snapshot[start + i] for i in range(count)]
-
-    assert simulator.read_input_registers(start, count) == expected
-
+    assert registers[0] == 0
+    assert len(registers[1]) > 0
+    assert registers[1][0] > 0

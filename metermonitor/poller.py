@@ -22,7 +22,7 @@ class MeterPoller:
 
     def poll_once(self) -> PollSnapshot:
         if not self._client.connect():
-            return PollSnapshot(ok=False, message="串口连接失败", parsed=None)
+            return PollSnapshot(ok=False, message="连接失败", parsed=None)
 
         try:
             raw_registers: dict[int, int] = {}
@@ -38,4 +38,3 @@ class MeterPoller:
             return PollSnapshot(ok=True, message="通讯正常", parsed=parsed)
         except Exception as exc:
             return PollSnapshot(ok=False, message=f"采集失败: {exc}", parsed=None)
-

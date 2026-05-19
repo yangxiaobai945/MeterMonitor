@@ -27,7 +27,9 @@ def _blocked_runtime_reason() -> str | None:
     return None
 
 
-def _ensure_hardware_runtime_allowed() -> None:
+def _ensure_hardware_runtime_allowed(transport: str) -> None:
+    if transport != "serial":
+        return
     reason = _blocked_runtime_reason()
     if reason is None:
         return
@@ -41,8 +43,8 @@ def _ensure_hardware_runtime_allowed() -> None:
 
 
 def main() -> None:
-    _ensure_hardware_runtime_allowed()
     config = parse_args()
+    _ensure_hardware_runtime_allowed(config.transport)
     packet_logger, result_logger = setup_logging(config.log_dir)
 
     client = MeterModbusClient(config, packet_logger)
