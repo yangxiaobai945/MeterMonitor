@@ -1,0 +1,45 @@
+name: Copilot Setup Steps
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+      - .github/copilot-instructions.md
+      - requirements.txt
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+      - .github/copilot-instructions.md
+      - requirements.txt
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
+
+      - name: Install test/simulator tools
+        run: |
+          python -m pip install pytest pymodbus
+
+      - name: Validate environment-only checks (no physical serial runtime)
+        run: |
+          python -m py_compile meter_monitor.py metermonitor/*.py
+          echo "Do NOT run meter_monitor.py/meter_motion.py in CI or Copilot cloud agent."
+
