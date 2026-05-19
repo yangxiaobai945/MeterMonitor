@@ -15,7 +15,21 @@ class MeterModbusClient:
         self._client = self._build_client()
 
     def _build_client(self) -> ModbusSerialClient:
-        def trace_packet(is_receive: bool, packet: bytes) -> bytes:
+        def trace_packet(*args: object) -> bytes:
+            if len(args) != 2:
+                return b""
+
+            is_receive: bool
+            packet: bytes
+            if isinstance(args[0], bool) and isinstance(args[1], (bytes, bytearray)):
+                is_receive = args[0]
+                packet = bytes(args[1])
+            elif isinstance(args[1], bool) and isinstance(args[0], (bytes, bytearray)):
+                is_receive = args[1]
+                packet = bytes(args[0])
+            else:
+                return b""
+
             direction = "RX" if is_receive else "TX"
             self._packet_logger.info("%s %s", direction, packet.hex(" ").upper())
             return packet
@@ -47,6 +61,8 @@ class MeterModbusClient:
             device_id=device_id,
         )
         if response.isError():
-            raise RuntimeError(str(response))
+            raise RuntimeError(
+                f"read_input_registers failed: device_id={device_id}, start=0x{start_address:04X}, "
+                f"count={count}, error={response}"
+            )
         return response.registers
-

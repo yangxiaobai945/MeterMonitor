@@ -45,7 +45,7 @@ REGISTER_SPECS: tuple[RegisterSpec, ...] = (
     RegisterSpec("FRa", 0x1A, 1, 0.01, "Hz", "A相电压频率"),
     RegisterSpec("FRb", 0x1B, 1, 0.01, "Hz", "B相电压频率"),
     RegisterSpec("FRc", 0x1C, 1, 0.01, "Hz", "C相电压频率"),
-    RegisterSpec("E_total", 0x001D, 2, 0.01, "kWh", "当前总有功电能"),
+    RegisterSpec("E_total", 0x1D, 2, 0.01, "kWh", "当前总有功电能"),
     RegisterSpec("E_import_total", 0x0027, 2, 0.01, "kWh", "当前正向总有功电能"),
     RegisterSpec("E_export_total", 0x0031, 2, 0.01, "kWh", "当前反向总有功电能"),
     RegisterSpec("EQ_total", 0x003B, 2, 0.01, "kVarh", "当前总无功电能"),
@@ -54,12 +54,11 @@ REGISTER_SPECS: tuple[RegisterSpec, ...] = (
 )
 
 READ_BLOCKS: tuple[ReadBlock, ...] = (
-    ReadBlock(0x00, 0x1D),  # 0x00 ~ 0x1C
-    ReadBlock(0x001D, 2),
+    ReadBlock(0x00, 29),  # 地址 0x00~0x1C（十进制 0~28），共 29 个寄存器
+    ReadBlock(0x1D, 2),
     ReadBlock(0x0027, 2),
     ReadBlock(0x0031, 2),
     ReadBlock(0x003B, 2),
     ReadBlock(0x0045, 2),
     ReadBlock(0x004F, 2),
 )
-
