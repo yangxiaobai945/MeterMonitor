@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 import time
 
 from rich.console import Console
@@ -13,7 +15,34 @@ from metermonitor.poller import MeterPoller, PollSnapshot
 from metermonitor.tui import build_renderable
 
 
+def _blocked_runtime_reason() -> str | None:
+    checks = (
+        ("GITHUB_ACTIONS", "GitHub Actions"),
+        ("CODESPACES", "GitHub Codespaces"),
+        ("CI", "CI"),
+    )
+    for env_key, label in checks:
+        value = os.getenv(env_key, "").strip().lower()
+        if value and value not in {"0", "false", "no"}:
+            return f"{label} ({env_key}={os.getenv(env_key)})"
+    return None
+
+
+def _ensure_hardware_runtime_allowed() -> None:
+    reason = _blocked_runtime_reason()
+    if reason is None:
+        return
+    Console(stderr=True).print(
+        "[red]检测到受限环境：[/red]"
+        f"{reason}\n"
+        "[yellow]当前环境无法连接物理串口，程序将退出。[/yellow]\n"
+        "请改为运行测试、pymodbus simulator/mock 或静态校验。"
+    )
+    raise SystemExit(2)
+
+
 def main() -> None:
+    _ensure_hardware_runtime_allowed()
     config = parse_args()
     packet_logger, result_logger = setup_logging(config.log_dir)
 
