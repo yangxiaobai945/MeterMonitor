@@ -120,7 +120,7 @@ class MeterProtocolSimulator:
         self.uc_raw = min(2400, max(2100, self.uc_raw + (1 if self._tick % 2 else -1)))
 
         self.ia_raw = min(800, max(10, self.ia_raw + current_delta))
-        self.ib_raw = min(800, max(10, self.ib_raw + (0 - current_delta)))
+        self.ib_raw = min(800, max(10, self.ib_raw - current_delta))
         self.ic_raw = min(800, max(10, self.ic_raw + (1 if self._tick % 2 else -1)))
 
         self.pa_raw = max(0, int(self.ua_raw * self.ia_raw * 0.0009))
@@ -146,4 +146,3 @@ class MeterProtocolSimulator:
         self.e_import_total_raw += 1
         self.eq_total_raw += 1
         self.eq_import_total_raw += 1
-
