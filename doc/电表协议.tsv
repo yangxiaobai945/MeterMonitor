@@ -1,0 +1,38 @@
+地址 (Hex)	数据内容	数据格式	数据长度 (Word)	单位	读/写 (R/W)	说明
+0x00	A相电压	Int	1	0.1V	R	Ua
+0x01	B相电压	Int	1	0.1V	R	Ub
+0x02	C相电压	Int	1	0.1V	R	Uc
+0x03	A相电流	Int	1	0.01A	R	Ia
+0x04	B相电流	Int	1	0.01A	R	Ib
+0x05	C相电流	Int	1	0.01A	R	Ic
+0x06	空	Int	-	-	-	-
+0x07	总有功功率	Int	1	W	R	ΣP
+0x08	A相有功功率	Int	1	W	R	Pa
+0x09	B相有功功率	Int	1	W	R	Pb
+0x0A	C相有功功率	Int	1	W	R	Pc
+0x0B	总无功功率	Int	1	Var	R	ΣQ
+0x0C	A相无功功率	Int	1	Var	R	Qa
+0x0D	B相无功功率	Int	1	Var	R	Qb
+0x0E	C相无功功率	Int	1	Var	R	Qc
+0x0F	总视在功率	Int	1	VA	R	ΣS
+0x10	A相视在功率	Int	1	VA	R	Sa
+0x11	B相视在功率	Int	1	VA	R	Sb
+0x12	C相视在功率	Int	1	VA	R	Sc
+0x13	总功率因数	Int	1	0~1.000	R	cosφs
+0x14	A相功率因数	Int	1	0~1.000	R	cosφA
+0x15	B相功率因数	Int	1	0~1.000	R	cosφB
+0x16	C相功率因数	Int	1	0~1.000	R	cosφC
+0x17	空	-	-	-	-	-
+0x18	空	-	-	-	-	-
+0x19	空	-	-	-	-	-
+0x1A	A相电压频率	Int	1	0.01Hz	R	FRa
+0x1B	B相电压频率	Int	1	0.01Hz	R	FRb
+0x1C	C相电压频率	Int	1	0.01Hz	R	FRc
+						
+地址 (Hex)	数据内容	数据格式	数据长度 (Word)	单位	读/写 (R/W)	
+0x001D	当前总有功电能	Long	2	0.01 kWh	R	
+0x0027	当前正向总有功电能	Long	2	0.01 kWh	R	
+0x0031	当前反向总有功电能	Long	2	0.01 kWh	R	
+0x003B	当前总无功电能	Long	2	0.01 kVarh	R	
+0x0045	当前正向总无功电能	Long	2	0.01 kVarh	R	
+0x004F	当前反向总无功电能	Long	2	0.01 kVarh	R	
