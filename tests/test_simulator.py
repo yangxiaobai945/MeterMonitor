@@ -42,8 +42,8 @@ def test_build_input_register_words_supports_custom_profile() -> None:
 
 def test_build_pymodbus_sim_device_populates_input_register_block() -> None:
     device = build_pymodbus_sim_device(device_id=3)
-    registers = device.build_device()
+    start_address, values, _flags = device.build_device()
 
-    assert registers[0] == 0
-    assert len(registers[1]) > 0
-    assert registers[1][0] > 0
+    assert start_address == 0
+    assert len(values) > 0
+    assert values[0] > 0

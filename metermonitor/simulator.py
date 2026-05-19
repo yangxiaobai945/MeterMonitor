@@ -91,7 +91,8 @@ def _raw_values_by_key(profile: SimulatorProfile) -> dict[str, int]:
 def build_input_register_words(profile: SimulatorProfile | None = None) -> dict[int, int]:
     active_profile = profile or SimulatorProfile()
     raw_values = _raw_values_by_key(active_profile)
-    registers: dict[int, int] = {addr: 0 for addr in range(0x00, 0x1D)}
+    max_address = max(spec.address + spec.words - 1 for spec in REGISTER_SPECS)
+    registers: dict[int, int] = {addr: 0 for addr in range(0x00, max_address + 1)}
     for spec in REGISTER_SPECS:
         raw_value = raw_values[spec.key]
         if spec.words == 1:
@@ -114,5 +115,10 @@ def build_pymodbus_sim_device(device_id: int = 1, profile: SimulatorProfile | No
 
 
 def run_pymodbus_simulator(host: str = "127.0.0.1", port: int = 5020, device_id: int = 1) -> None:
+    """Run a foreground TCP simulator process for local TUI debugging.
+
+    This call is intentionally blocking (StartTcpServer) and should be run in
+    a dedicated terminal/session.
+    """
     device = build_pymodbus_sim_device(device_id=device_id)
     StartTcpServer(device, address=(host, port))
